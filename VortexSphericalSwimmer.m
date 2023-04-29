@@ -8,17 +8,21 @@ dtheta = theta(3)-theta(2);
 r = linspace(0,1,n); r(1) = 1E-3; %buffer to avoid singularity
 dr = r(3)-r(2);
 A = 1; B = 1; C = 1; D = 1;
+a = 2E-6; %radius of microswimmer in meters
 
 %streamline function
 psi = ones(length(r),length(theta));
 
-%velocity function
-% U = ones(length(r),length(theta)); % U(r,theta)
-% U_r = zeros(length(r),length(theta)); % U(r,theta)
-% U_theta = zeros(length(r),length(theta)); % U(r,theta)
-
 xx = ones(length(r),length(theta)); 
 yy = ones(length(r),length(theta)); 
+
+U = cell(n,n); Ur = cell(n,n); Urr = cell(n,n); Uthetatheta = cell(n,n);
+
+for i3 = 1:n
+    for j3 = 1:n
+        U{i3,j3} = [0,0];Ur{i3,j3} = [0,0];Urr{i3,j3} = [0,0];Uthetatheta{i3,j3} = [0,0];
+    end
+end
 
 for d = 1:length(lambda)
     for i2 = 1:length(r)
@@ -30,41 +34,29 @@ for d = 1:length(lambda)
             if i2 < n && i2 > 1
                 U{i2+1,j} = [u_rf(r(i2),lambda(d),theta(j),A,B,C,D),...
                     u_thetaf(r(i2),lambda(d),theta(j),A,B,C,D)]; %At (r,theta), returns <U(r),U(theta)>
+                [drUr,drUt] = dru(r(i2),lambda(d),theta(j),A,B,C,D);
+                Ur{i2+1,j} = [drUr,drUt]; %At (r,theta) returns <dU(r)/dr,dU(theta)/dr>
+                [d2ru_r,d2ru_theta] = d2ru(r(i2),lambda(d),theta(j),A,B,C,D);
+                Urr{i2+1,j} = [d2ru_r,d2ru_theta]; %At (r,theta) returns <d^2U(r)/dr^2,d^2U(theta)/dr^2>
+                [d2tu_r,d2tu_theta] = d2tu(r(i2),lambda(d),theta(j),A,B,C,D);
+                Uthetatheta{i2+1,j} = [d2tu_r,d2tu_theta]; %At (r,theta) returns <d^2U(r)/dtheta^2,d^2U(theta)/dtheta^2>
             else
                 U{i2+1,j} = [0,0]; %BC
+                %% ASSUMING Neumann conditions of 1st and 2nd order are 0 - NEED TO CHECK
+                Ur{i2+1,j} = [0,0];
+                Urr{i2+1,j} = [0,0];
+                Uthetatheta{i2+1,j} = [0,0];
             end
         end
     end
-    U(1,:) = [];
-    %U = U/norm(U,2); 
-    psi = psi/norm(psi,2);
-    % randomize an initial position for the particle
-    p_ar(1,1) = r(90); p_ar(1,2) = theta(90);
-    indr = round((p_ar(1,1)/dr)+1); 
-    if p_ar(1,2) < 0
-        indtheta = round((abs(p_ar(1,2))/dtheta)+1);
+    U(1,:) = []; Ur(1,:) = []; Urr(1,:) = []; Uthetatheta(1,:) = [];
+    %% Influence of Faxen's Laws
+    if i2 < length(r)
+        U{i2+1,j} = U{i2+1,j}+(a^2/6)*Urr{i2+1,j}+(a^2/(6*r(i2)))*Ur{i2+1,j}+(a^2/(6*r(i2)^2))*Uthetatheta{i2+1,j};
     else
-        indtheta = round((length(theta)-(abs(p_ar(1,2))/dtheta))+1);
+        U{n,j} = U{n,j}+(a^2/6)*Urr{n,j}+(a^2/(6*r(i2)))*Ur{n,j}+(a^2/(6*r(i2)^2))*Uthetatheta{n,j};
     end
-    vel = U{indr,indtheta};
-    for counti = 2:1000
-        if counti == 2
-            p_ar(counti,1) = vel(1)+p_ar(1,1); 
-            p_ar(counti,2) = vel(2)+p_ar(1,2);
-        else
-            % indr = round((p_ar(counti-1,1)/dr)+1); 
-            % if p_ar(counti-1,2) < 0
-            %     deg_ind = abs(p_ar(1,2))/dtheta;
-            %     indtheta = round(deg_ind+1);
-            % elseif p_ar(counti-1,2) > 0
-            %     deg_ind = abs(p_ar(1,2))/dtheta;
-            %     indtheta = round(deg_ind+1);
-            % end
-            % vel = U{indr,indtheta};
-            % p_ar(counti,1) = vel(1)+p_ar(counti-1,1); 
-            % p_ar(counti,2) = vel(2)+p_ar(counti-1,2);
-        end
-    end
+    psi = psi/norm(psi,2);
     figure(d)
     contour(xx,yy,psi)
     f = gcf;
@@ -92,11 +84,35 @@ function [psi] = psif(r,lambda,theta,A,B,C,D)
 end
 
 function [u_theta] = u_thetaf(r,lambda,theta,A,B,C,D)
-    u_theta = lambda*r^(lambda-1)*(A*cos(lambda*theta)+B*sin(lambda*theta) + ...
-              C*cos((lambda-2)*theta)+D*sin((lambda-2)*theta));
+    u_theta = -lambda*r^(lambda-1)*(A*cos(lambda*theta)+B*sin(lambda*theta) + ...
+              C*(lambda-2)*cos((lambda-2)*theta)+D*(lambda-2)*sin((lambda-2)*theta));
 end
 
 function [u_r] = u_rf(r,lambda,theta,A,B,C,D)
-    u_r = r^lambda*(-A*lambda*sin(lambda*theta)+B*lambda*cos(lambda*theta) - ...
+    u_r = r^(lambda-1)*(-A*lambda*sin(lambda*theta)+B*lambda*cos(lambda*theta) - ...
               C*(lambda-2)*sin((lambda-2)*theta)+D*(lambda-2)*cos((lambda-2)*theta));
+end
+
+%[d_r u_r, d_r u_theta]
+function [dru_r,dru_theta] = dru(r,lambda,theta,A,B,C,D)
+    dru_r = (lambda-1)*r^(lambda-2)*(-A*lambda*sin(lambda*theta)+B*lambda*cos(lambda*theta)-...
+        C*(lambda-2)*sin(theta*(lambda-2))+D*(lambda-2)*cos(theta*(lambda-2)));
+    dru_theta = -lambda*(lambda-1)*r^(lambda-2)*(A*cos(lambda*theta)+B*sin(lambda*theta)+...
+        C*cos(theta*(lambda-2))+D*sin(theta*(lambda-2)));
+end
+
+%[d^2_rr u_r, d^2_rr u_theta]
+function [d2ru_r,d2ru_theta] = d2ru(r,lambda,theta,A,B,C,D)
+    d2ru_r = (lambda-1)*(lambda-2)*r^(lambda-3)*(-A*lambda*sin(lambda*theta)+B*lambda*cos(lambda*theta)-...
+        C*(lambda-2)*sin(theta*(lambda-2))+D*(lambda-2)*cos(theta*(lambda-2)));
+    d2ru_theta = -lambda*(lambda-1)*(lambda-2)*r^(lambda-3)*(A*cos(lambda*theta)+B*sin(lambda*theta)+...
+        C*cos(theta*(lambda-2))+D*sin(theta*(lambda-2)));
+end
+
+%[d^2_theta,theta u_r, d^2_theta,theta u_theta]
+function [d2tu_r,d2tu_theta] = d2tu(r,lambda,theta,A,B,C,D)
+    d2tu_r = r^(lambda-1)*(A*lambda^3*sin(lambda*theta)-B*lambda^3*(cos(lambda*theta))+...
+        C*(lambda-2)^3*sin(theta*(lambda-2))-D*(lambda-2)^3*cos(theta*(lambda-2)));
+    d2tu_theta = -lambda*r^(lambda-1)*(-A*lambda^2*cos(lambda*theta)-B*lambda^2*sin(lambda*theta)+...
+        C*(lambda-2)^2*sin(theta*(lambda-2))-D*(lambda-2)^2*sin(theta*(lambda-2)));
 end
