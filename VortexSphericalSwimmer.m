@@ -2,11 +2,11 @@
 length_wall = 1; %in meters
 n = 100;
 alpha = pi/12; %half the angle of the wedge
-lambda = 1:50; % different eddies
+lambda = [5]; % different eddies
 theta = linspace(-alpha,alpha,n);
 dtheta = theta(3)-theta(2);
 r = linspace(0,1,n); r(1) = 1E-3; %buffer to avoid singularity
-dr = r(3)-r(2);
+dr = r(3)-r(2); dt = linspace(0,1,n); %time steps
 A = 1; B = 1; C = 1; D = 1;
 a = 2E-6; %radius of microswimmer in meters
 
@@ -56,13 +56,42 @@ for d = 1:length(lambda)
     else
         U{n,j} = U{n,j}+(a^2/6)*Urr{n,j}+(a^2/(6*r(i2)))*Ur{n,j}+(a^2/(6*r(i2)^2))*Uthetatheta{n,j};
     end
+    %% RK-4 Implementation 
+    %initialize in middle of the array
+    cr(1) = r(n/2); ctheta(1) = theta(n/2); 
+    k1r = dt(1)*U{n/2,n/2}(1); newr = cr(1)+k1r; k1theta = dt(1)*U{n/2,n/2}(2); newtheta = ctheta(1)+k1theta;
+    [indr,indtheta] = closestField(r,theta,newr,newtheta); 
+    k2r = dt(1)*U{indr,indtheta}(1); newr = cr(1)+k1r/2; k2theta = dt(1)*U{indr,indtheta}(2); newtheta = ctheta(1)+k1theta;
+    [indr,indtheta] = closestField(r,theta,newr,newtheta); 
+    k3r = dt(1)*U{indr,indtheta}(1); newr = cr(1)+k2r/2; k3theta = dt(1)*U{indr,indtheta}(2); newtheta = ctheta(1)+k2theta/2;
+    [indr,indtheta] = closestField(r,theta,newr,newtheta); 
+    k4r = dt(1)*U{indr,indtheta}(1); newr = cr(1)+k3r/2; k4theta = dt(1)*U{indr,indtheta}(2); newtheta = ctheta(1)+k3theta/2;
+    for t = 2:length(dt)
+        cr(t) = cr(t-1)+(1/6)*(k1r+2*k2r+2*k3r+2*k4r);
+        ctheta(t) = ctheta(t-1)+(1/6)*(k1theta+2*k2theta+2*k3theta+2*k4theta);
+        % use function to find the closest r index and theta index
+        [indr,indtheta] = closestField(r,theta,cr(t),ctheta(t)); 
+        % find the velocity field at that r and theta
+        k1r = dt(t)*U{indr,indtheta}(1); newr = cr(t)+k1r; k1theta = dt(t)*U{indr,indtheta}(2); newtheta = ctheta(t)+k1theta;
+        [indr,indtheta] = closestField(r,theta,newr,newtheta); 
+        k2r = dt(t)*U{indr,indtheta}(1); newr = cr(t)+k1r/2; k2theta = dt(t)*U{indr,indtheta}(2); newtheta = ctheta(t)+k1theta;
+        [indr,indtheta] = closestField(r,theta,newr,newtheta); 
+        k3r = dt(t)*U{indr,indtheta}(1); newr = cr(t)+k2r/2; k3theta = dt(t)*U{indr,indtheta}(2); newtheta = ctheta(t)+k2theta/2;
+        [indr,indtheta] = closestField(r,theta,newr,newtheta); 
+        k4r = dt(t)*U{indr,indtheta}(1); newr = cr(t)+k3r/2; k4theta = dt(t)*U{indr,indtheta}(2); newtheta = ctheta(t)+k3theta/2;
+    end
+    for t = 2:length(dt)
+    end
     psi = psi/norm(psi,2);
     figure(d)
+    hold on
     contour(xx,yy,psi)
+    scatter(cr,ctheta,'filled')
     f = gcf;
     title_temp = strcat('eigenvalue ',int2str(d), 'stream function','.jpg');
     saveas(f,title_temp)
     title{j} = title_temp;
+    hold off
 end
 
 function index = closest(U_array,velocity)
@@ -115,4 +144,10 @@ function [d2tu_r,d2tu_theta] = d2tu(r,lambda,theta,A,B,C,D)
         C*(lambda-2)^3*sin(theta*(lambda-2))-D*(lambda-2)^3*cos(theta*(lambda-2)));
     d2tu_theta = -lambda*r^(lambda-1)*(-A*lambda^2*cos(lambda*theta)-B*lambda^2*sin(lambda*theta)+...
         C*(lambda-2)^2*sin(theta*(lambda-2))-D*(lambda-2)^2*sin(theta*(lambda-2)));
+end
+
+%find the closest value based on r and theta, the corresponding velocity
+%field
+function [rindex,thetaindex] = closestField(r_array,theta_array,r_temp,theta_temp)
+    [~, rindex] = min(abs(r_array-r_temp)); [~,thetaindex] = min(abs(theta_array-theta_temp));
 end
