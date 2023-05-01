@@ -2,14 +2,13 @@
 length_wall = 1; %in meters
 n = 100;
 alpha = pi/12; %half the angle of the wedge
-lambda = [5]; % different eddies
+lambda = [4]; % different eddies
 theta = linspace(-alpha,alpha,n);
 dtheta = theta(3)-theta(2);
 r = linspace(0,1,n); r(1) = 1E-3; %buffer to avoid singularity
-dr = r(3)-r(2); dt = linspace(0,1,n); %time steps
+dr = r(3)-r(2); dt = linspace(0.01,10000,n); %time steps
 A = 1; B = 1; C = 1; D = 1;
-a = 2E-6; %radius of microswimmer in meters
-
+a = 0; %radius of microswimmer in meters
 %streamline function
 psi = ones(length(r),length(theta));
 
@@ -58,8 +57,10 @@ for d = 1:length(lambda)
     end
     %% RK-4 Implementation 
     %initialize in middle of the array
-    cr(1) = r(n/2); ctheta(1) = theta(n/2); 
-    k1r = dt(1)*U{n/2,n/2}(1); newr = cr(1)+k1r; k1theta = dt(1)*U{n/2,n/2}(2); newtheta = ctheta(1)+k1theta;
+    %indr = randi([1, 100],1); indtheta = randi([1, 100],1);
+    indr = 2; indtheta = 1;
+    cr(1) = r(indr); ctheta(1) = theta(indtheta); 
+    k1r = dt(1)*U{indr,indtheta}(1); newr = cr(1)+k1r; k1theta = dt(1)*U{indr,indtheta}(2); newtheta = ctheta(1)+k1theta;
     [indr,indtheta] = closestField(r,theta,newr,newtheta); 
     k2r = dt(1)*U{indr,indtheta}(1); newr = cr(1)+k1r/2; k2theta = dt(1)*U{indr,indtheta}(2); newtheta = ctheta(1)+k1theta;
     [indr,indtheta] = closestField(r,theta,newr,newtheta); 
@@ -69,24 +70,49 @@ for d = 1:length(lambda)
     for t = 2:length(dt)
         cr(t) = cr(t-1)+(1/6)*(k1r+2*k2r+2*k3r+2*k4r);
         ctheta(t) = ctheta(t-1)+(1/6)*(k1theta+2*k2theta+2*k3theta+2*k4theta);
+        % clean up
+        while cr(t) >= min(r) && cr(t) <= max(r) && ctheta(t) >= min(theta) && ctheta(t) <= max(theta)
+            if cr(t) >= max(r) && (ctheta(t) >= min(theta) && ctheta(t) <= max(theta))
+                cr(t) = mod(cr(t),max(r)); 
+            elseif cr(t) <= min(r) && (ctheta(t) >= min(theta) && ctheta(t) <= max(theta))
+                cr(t) =  mod(cr(t),min(r));  
+            elseif ctheta(t) >= max(theta) && (cr(t) >= min(r) && cr(t) <= max(r))
+                ctheta(t) = mod(ctheta(t),max(theta)); 
+            elseif ctheta(t) <= min(theta) && (cr(t) >= min(r) && cr(t) <= max(r))
+                ctheta(t) = mod(ctheta(t),min(theta)); 
+            elseif ctheta(t) >= max(theta) && cr(t) >= max(r)
+                ctheta(t) = mod(ctheta(t),max(theta)); cr(t) = mod(cr(t),max(r)); 
+            elseif ctheta(t) <= min(theta) && cr(t) <= min(r)
+                ctheta(t) = mod(ctheta(t),min(theta)); cr(t) = mod(cr(t),min(r)); 
+            elseif ctheta(t) <= min(theta) && cr(t) >= max(r)
+                ctheta(t) = mod(ctheta(t),min(theta)); cr(t) = mod(cr(t),max(r)); 
+            else
+                ctheta(t) = mod(ctheta(t),max(theta)); cr(t) = mod(cr(t),min(r));
+            end
+        end
+
         % use function to find the closest r index and theta index
         [indr,indtheta] = closestField(r,theta,cr(t),ctheta(t)); 
         % find the velocity field at that r and theta
-        k1r = dt(t)*U{indr,indtheta}(1); newr = cr(t)+k1r; k1theta = dt(t)*U{indr,indtheta}(2); newtheta = ctheta(t)+k1theta;
+        k1r = dt(t)*U{indr,indtheta}(1); newr = cr(t)+k1r/2; k1theta = dt(t)*U{indr,indtheta}(2); newtheta = ctheta(t)+k1theta/2;
         [indr,indtheta] = closestField(r,theta,newr,newtheta); 
-        k2r = dt(t)*U{indr,indtheta}(1); newr = cr(t)+k1r/2; k2theta = dt(t)*U{indr,indtheta}(2); newtheta = ctheta(t)+k1theta;
+        k2r = dt(t)*U{indr,indtheta}(1); newr = cr(t)+k1r/2; k2theta = dt(t)*U{indr,indtheta}(2); newtheta = ctheta(t)+k1theta/2;
         [indr,indtheta] = closestField(r,theta,newr,newtheta); 
         k3r = dt(t)*U{indr,indtheta}(1); newr = cr(t)+k2r/2; k3theta = dt(t)*U{indr,indtheta}(2); newtheta = ctheta(t)+k2theta/2;
         [indr,indtheta] = closestField(r,theta,newr,newtheta); 
         k4r = dt(t)*U{indr,indtheta}(1); newr = cr(t)+k3r/2; k4theta = dt(t)*U{indr,indtheta}(2); newtheta = ctheta(t)+k3theta/2;
     end
-    for t = 2:length(dt)
-    end
+    %boundaries
+    % xminL = min(cr); yminL = 0;
+    % xminR = max(cr)*cos(-alpha); yminR = max(cr)*sin(-alpha);
+    % xmaxR = max(cr)*cos(alpha); ymaxR = max(cr)*sin(alpha);
     psi = psi/norm(psi,2);
     figure(d)
     hold on
     contour(xx,yy,psi)
     scatter(cr,ctheta,'filled')
+    % plot([xminL,xmaxR],[yminL,ymaxR])
+    % plot([xminL,xminR],[yminL,yminR])
     f = gcf;
     title_temp = strcat('eigenvalue ',int2str(d), 'stream function','.jpg');
     saveas(f,title_temp)
